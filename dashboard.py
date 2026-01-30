@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
-from datetime import timedelta
+from datetime import timedelta, date
 import os
+import smtplib
+from email.mime.text import MIMEText
 
 from engine.revenue_metrics import (
     prepare_revenue_data,
@@ -11,15 +13,15 @@ from engine.revenue_metrics import (
 from engine.revenue_risk import revenue_signals
 
 
-# ==============================
+# =====================================================
 # PAGE CONFIG
-# ==============================
+# =====================================================
 st.set_page_config(page_title="Revenue Command", layout="wide")
 
 
-# ==============================
-# 🔐 AUTHENTICATION LAYER
-# ==============================
+# =====================================================
+# 🔐 AUTHENTICATION (OPTION 2)
+# =====================================================
 APP_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
 
 if "authenticated" not in st.session_state:
@@ -27,7 +29,7 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state.authenticated:
     st.title("🔐 Restricted Access")
-    st.caption("This dashboard contains confidential revenue data")
+    st.caption("Confidential revenue dashboard")
 
     password = st.text_input("Enter access password", type="password")
 
@@ -41,18 +43,58 @@ if not st.session_state.authenticated:
         else:
             st.error("Invalid password")
 
-    st.stop()  # ⛔ STOP everything below from executing
+    st.stop()  # ⛔ BLOCK EVERYTHING BELOW
 
 
-# ==============================
+# =====================================================
+# 📧 EMAIL FUNCTION (ONCE PER DAY)
+# =====================================================
+def send_daily_email(metrics, changes, discount_pct, discount_roi, alerts):
+    sender = os.getenv("EMAIL_SENDER")
+    password = os.getenv("EMAIL_PASSWORD")
+    receivers = os.getenv("EMAIL_RECEIVER")
+
+    if not sender or not password or not receivers:
+        return
+
+    subject = "📊 Daily Revenue Summary – Arista Vault"
+
+    body = f"""
+Daily Revenue Summary
+
+Net Revenue: ₹{int(metrics['total_net']):,}
+Orders: {metrics['orders']}
+AOV: ₹{metrics['aov']:,}
+
+WoW Revenue: {changes.get('wow_pct')}%
+MoM Revenue: {changes.get('mom_pct')}%
+Run Rate: ₹{int(changes.get('run_rate', 0)):,}
+
+Discount %: {discount_pct}%
+Discount ROI: ₹{discount_roi}
+
+Founder Signals:
+""" + "\n".join(alerts)
+
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = receivers
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(sender, password)
+        server.sendmail(sender, receivers.split(","), msg.as_string())
+
+
+# =====================================================
 # DATA LOAD
-# ==============================
+# =====================================================
 @st.cache_data
 def load_data():
     df = pd.read_csv("data/orders_by_date.csv")
     df = prepare_revenue_data(df)
 
-    # Enforce last 30 days
     max_date = df["day"].max()
     df = df[df["day"] >= max_date - timedelta(days=30)]
 
@@ -70,9 +112,9 @@ def signal(pct):
         return f"{pct}%", "🟢"
 
 
-# ==============================
+# =====================================================
 # COMPUTE METRICS
-# ==============================
+# =====================================================
 df = load_data()
 
 metrics = compute_revenue_metrics(df)
@@ -84,9 +126,22 @@ mom, mom_icon = signal(changes.get("mom_pct"))
 aov_wow, aov_icon = signal(changes.get("aov_wow"))
 
 
-# ==============================
+# =====================================================
+# 📧 SEND EMAIL (ONCE PER DAY)
+# =====================================================
+if "email_sent_date" not in st.session_state:
+    st.session_state.email_sent_date = None
+
+today = date.today()
+
+if st.session_state.email_sent_date != today:
+    send_daily_email(metrics, changes, discount_pct, discount_roi, alerts)
+    st.session_state.email_sent_date = today
+
+
+# =====================================================
 # UI
-# ==============================
+# =====================================================
 st.title("💰 Arista Vault – Revenue Command Dashboard (Last 30 Days)")
 st.caption("Founder Money View | Net Revenue First")
 
@@ -106,9 +161,9 @@ st.metric("AOV (Net)", f"₹{metrics['aov']:,}", aov_wow)
 st.divider()
 
 
-# ==============================
+# =====================================================
 # EXECUTIVE SUMMARY
-# ==============================
+# =====================================================
 st.subheader("🧠 Executive Summary – What Changed vs Previous Day")
 
 day_delta = changes.get("day_delta")
@@ -126,18 +181,18 @@ else:
 st.divider()
 
 
-# ==============================
+# =====================================================
 # REVENUE TREND
-# ==============================
+# =====================================================
 st.subheader("📈 Net Revenue Trend (Last 30 Days)")
 st.line_chart(metrics["revenue_by_day"])
 
 st.divider()
 
 
-# ==============================
+# =====================================================
 # REVENUE CONCENTRATION
-# ==============================
+# =====================================================
 st.subheader("⚠️ Revenue Concentration")
 st.write(
     f"""
@@ -152,9 +207,9 @@ st.bar_chart(metrics["revenue_by_product"].head(10))
 st.divider()
 
 
-# ==============================
+# =====================================================
 # DISCOUNT EFFICIENCY
-# ==============================
+# =====================================================
 st.subheader("🏷️ Discount Efficiency")
 
 st.write(f"**Discount %:** {discount_pct}%")
@@ -178,9 +233,9 @@ st.table(
 st.divider()
 
 
-# ==============================
+# =====================================================
 # NEW vs REPEAT (PROXY)
-# ==============================
+# =====================================================
 st.subheader("🔁 New vs Repeat Revenue (Order-Level Proxy)")
 st.caption("Based on order value distribution, not customer identity")
 
@@ -192,9 +247,9 @@ st.bar_chart({
 st.divider()
 
 
-# ==============================
+# =====================================================
 # ALERTS
-# ==============================
+# =====================================================
 st.subheader("🚨 Founder Signals")
 for alert in alerts:
     st.warning(alert)
