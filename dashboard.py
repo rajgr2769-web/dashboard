@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import timedelta
+import os
 
 from engine.revenue_metrics import (
     prepare_revenue_data,
@@ -9,15 +10,49 @@ from engine.revenue_metrics import (
 )
 from engine.revenue_risk import revenue_signals
 
+
+# ==============================
+# PAGE CONFIG
+# ==============================
 st.set_page_config(page_title="Revenue Command", layout="wide")
 
-# ---------- DATA LOAD ----------
+
+# ==============================
+# 🔐 AUTHENTICATION LAYER
+# ==============================
+APP_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.title("🔐 Restricted Access")
+    st.caption("This dashboard contains confidential revenue data")
+
+    password = st.text_input("Enter access password", type="password")
+
+    if st.button("Login"):
+        if APP_PASSWORD is None:
+            st.error("Password not configured. Contact admin.")
+        elif password == APP_PASSWORD:
+            st.session_state.authenticated = True
+            st.success("Access granted")
+            st.rerun()
+        else:
+            st.error("Invalid password")
+
+    st.stop()  # ⛔ STOP everything below from executing
+
+
+# ==============================
+# DATA LOAD
+# ==============================
 @st.cache_data
 def load_data():
     df = pd.read_csv("data/orders_by_date.csv")
     df = prepare_revenue_data(df)
 
-    # ✅ Enforce last 30 days (ACTUAL FILTER)
+    # Enforce last 30 days
     max_date = df["day"].max()
     df = df[df["day"] >= max_date - timedelta(days=30)]
 
@@ -35,7 +70,9 @@ def signal(pct):
         return f"{pct}%", "🟢"
 
 
-# ---------- COMPUTE ----------
+# ==============================
+# COMPUTE METRICS
+# ==============================
 df = load_data()
 
 metrics = compute_revenue_metrics(df)
@@ -46,7 +83,10 @@ wow, wow_icon = signal(changes.get("wow_pct"))
 mom, mom_icon = signal(changes.get("mom_pct"))
 aov_wow, aov_icon = signal(changes.get("aov_wow"))
 
-# ---------- UI ----------
+
+# ==============================
+# UI
+# ==============================
 st.title("💰 Arista Vault – Revenue Command Dashboard (Last 30 Days)")
 st.caption("Founder Money View | Net Revenue First")
 
@@ -65,7 +105,10 @@ st.metric("AOV (Net)", f"₹{metrics['aov']:,}", aov_wow)
 
 st.divider()
 
-# ---------- EXECUTIVE SUMMARY ----------
+
+# ==============================
+# EXECUTIVE SUMMARY
+# ==============================
 st.subheader("🧠 Executive Summary – What Changed vs Previous Day")
 
 day_delta = changes.get("day_delta")
@@ -82,13 +125,19 @@ else:
 
 st.divider()
 
-# ---------- REVENUE TREND ----------
+
+# ==============================
+# REVENUE TREND
+# ==============================
 st.subheader("📈 Net Revenue Trend (Last 30 Days)")
 st.line_chart(metrics["revenue_by_day"])
 
 st.divider()
 
-# ---------- REVENUE CONCENTRATION ----------
+
+# ==============================
+# REVENUE CONCENTRATION
+# ==============================
 st.subheader("⚠️ Revenue Concentration")
 st.write(
     f"""
@@ -102,7 +151,10 @@ st.bar_chart(metrics["revenue_by_product"].head(10))
 
 st.divider()
 
-# ---------- DISCOUNT EFFICIENCY ----------
+
+# ==============================
+# DISCOUNT EFFICIENCY
+# ==============================
 st.subheader("🏷️ Discount Efficiency")
 
 st.write(f"**Discount %:** {discount_pct}%")
@@ -125,7 +177,10 @@ st.table(
 
 st.divider()
 
-# ---------- NEW vs REPEAT (PROXY) ----------
+
+# ==============================
+# NEW vs REPEAT (PROXY)
+# ==============================
 st.subheader("🔁 New vs Repeat Revenue (Order-Level Proxy)")
 st.caption("Based on order value distribution, not customer identity")
 
@@ -136,7 +191,10 @@ st.bar_chart({
 
 st.divider()
 
-# ---------- ALERTS ----------
+
+# ==============================
+# ALERTS
+# ==============================
 st.subheader("🚨 Founder Signals")
 for alert in alerts:
     st.warning(alert)
