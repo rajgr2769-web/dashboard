@@ -1,9 +1,7 @@
 import streamlit as st
 import pandas as pd
-from datetime import timedelta, date
+from datetime import timedelta
 import os
-import smtplib
-from email.mime.text import MIMEText
 
 from engine.revenue_metrics import (
     prepare_revenue_data,
@@ -12,16 +10,24 @@ from engine.revenue_metrics import (
 )
 from engine.revenue_risk import revenue_signals
 
+
 # =====================================================
 # PAGE CONFIG
 # =====================================================
-st.set_page_config(page_title="Revenue Command", layout="wide")
+st.set_page_config(
+    page_title="Arista Vault – Revenue Command",
+    layout="wide"
+)
 
 
 # =====================================================
-# 🔐 AUTHENTICATION (OPTION 2)
+# 🔐 AUTHENTICATION (FOUNDER ONLY)
 # =====================================================
 APP_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
+
+if APP_PASSWORD is None:
+    st.error("Password not configured. Contact admin.")
+    st.stop()
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
@@ -33,57 +39,13 @@ if not st.session_state.authenticated:
     password = st.text_input("Enter access password", type="password")
 
     if st.button("Login"):
-        if APP_PASSWORD is None:
-            st.error("Password not configured. Contact admin.")
-        elif password == APP_PASSWORD:
+        if password == APP_PASSWORD:
             st.session_state.authenticated = True
-            st.success("Access granted")
             st.rerun()
         else:
             st.error("Invalid password")
 
-    st.stop()  # ⛔ BLOCK EVERYTHING BELOW
-
-
-# =====================================================
-# 📧 EMAIL FUNCTION (ONCE PER DAY)
-# =====================================================
-def send_daily_email(metrics, changes, discount_pct, discount_roi, alerts):
-    sender = os.getenv("EMAIL_SENDER")
-    password = os.getenv("EMAIL_PASSWORD")
-    receivers = os.getenv("EMAIL_RECEIVER")
-
-    if not sender or not password or not receivers:
-        return
-
-    subject = "📊 Daily Revenue Summary – Arista Vault"
-
-    body = f"""
-Daily Revenue Summary
-
-Net Revenue: ₹{int(metrics['total_net']):,}
-Orders: {metrics['orders']}
-AOV: ₹{metrics['aov']:,}
-
-WoW Revenue: {changes.get('wow_pct')}%
-MoM Revenue: {changes.get('mom_pct')}%
-Run Rate: ₹{int(changes.get('run_rate', 0)):,}
-
-Discount %: {discount_pct}%
-Discount ROI: ₹{discount_roi}
-
-Founder Signals:
-""" + "\n".join(alerts)
-
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = receivers
-
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(sender, password)
-        server.sendmail(sender, receivers.split(","), msg.as_string())
+    st.stop()
 
 
 # =====================================================
@@ -94,6 +56,7 @@ def load_data():
     df = pd.read_csv("data/orders_by_date.csv")
     df = prepare_revenue_data(df)
 
+    # Enforce last 30 days
     max_date = df["day"].max()
     df = df[df["day"] >= max_date - timedelta(days=30)]
 
@@ -126,26 +89,15 @@ aov_wow, aov_icon = signal(changes.get("aov_wow"))
 
 
 # =====================================================
-# 📧 SEND EMAIL (ONCE PER DAY)
-# =====================================================
-if "email_sent_date" not in st.session_state:
-    st.session_state.email_sent_date = None
-
-today = date.today()
-
-if st.session_state.email_sent_date != today:
-    #send_daily_email(metrics, changes, discount_pct, discount_roi, alerts)
-    st.session_state.email_sent_date = today
-
-
-# =====================================================
 # UI
 # =====================================================
-st.title("💰 Arista Vault – Revenue Command Dashboard (Last 30 Days)")
-st.caption("Founder Money View | Net Revenue First")
+st.title("💰 Arista Vault – Revenue Command Dashboard")
+st.caption("Founder Money View · Last 30 Days · Net Revenue First")
+
 
 # KPIs
 c1, c2, c3, c4, c5 = st.columns(5)
+
 c1.metric("Net Revenue", f"₹{int(metrics['total_net']):,}")
 c2.metric("WoW Revenue", wow, wow_icon)
 c3.metric("MoM Revenue", mom, mom_icon)
@@ -193,12 +145,13 @@ st.divider()
 # REVENUE CONCENTRATION
 # =====================================================
 st.subheader("⚠️ Revenue Concentration")
+
 st.write(
     f"""
-    - **Top 1 Product:** {metrics['top_1']}%  
-    - **Top 3 Products:** {metrics['top_3']}%  
-    - **Top 5 Products:** {metrics['top_5']}%
-    """
+- **Top 1 Product:** {metrics['top_1']}%  
+- **Top 3 Products:** {metrics['top_3']}%  
+- **Top 5 Products:** {metrics['top_5']}%
+"""
 )
 
 st.bar_chart(metrics["revenue_by_product"].head(10))
@@ -212,15 +165,18 @@ st.divider()
 st.subheader("🏷️ Discount Efficiency")
 
 st.write(f"**Discount %:** {discount_pct}%")
+
 if discount_roi:
     st.write(f"**Discount ROI:** ₹{discount_roi} revenue per ₹1 discount")
 else:
-    st.write("**Discount ROI:** N/A (no discounts applied)")
+    st.write("**Discount ROI:** N/A")
 
 discount_table = metrics["discount_by_product"].copy()
+
 discount_table["discount_ratio_%"] = round(
     discount_table["discounts"] /
-    (discount_table["net sales"] + discount_table["discounts"]) * 100, 2
+    (discount_table["net sales"] + discount_table["discounts"]) * 100,
+    2
 )
 
 st.table(
@@ -235,8 +191,8 @@ st.divider()
 # =====================================================
 # NEW vs REPEAT (PROXY)
 # =====================================================
-st.subheader("🔁 New vs Repeat Revenue (Order-Level Proxy)")
-st.caption("Based on order value distribution, not customer identity")
+st.subheader("🔁 New vs Repeat Revenue")
+st.caption("Proxy based on order value distribution (not customer identity)")
 
 st.bar_chart({
     "New Revenue": metrics["new_revenue"],
@@ -247,8 +203,12 @@ st.divider()
 
 
 # =====================================================
-# ALERTS
+# FOUNDER ALERTS
 # =====================================================
 st.subheader("🚨 Founder Signals")
-for alert in alerts:
-    st.warning(alert)
+
+if alerts:
+    for alert in alerts:
+        st.warning(alert)
+else:
+    st.success("No critical revenue risks detected.")
