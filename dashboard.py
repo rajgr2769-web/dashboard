@@ -12,7 +12,6 @@ from engine.revenue_metrics import (
 )
 from engine.revenue_risk import revenue_signals
 
-
 # =====================================================
 # PAGE CONFIG
 # =====================================================
