@@ -33,7 +33,7 @@ if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    st.title("🔐 Restricted Access")
+    st.title(" Restricted Access")
     st.caption("Confidential revenue dashboard")
 
     password = st.text_input("Enter access password", type="password")
@@ -91,7 +91,7 @@ aov_wow, aov_icon = signal(changes.get("aov_wow"))
 # =====================================================
 # UI
 # =====================================================
-st.title("💰 Arista Vault – Revenue Command Dashboard")
+st.title(" Arista Vault – Revenue Command Dashboard")
 st.caption("Founder Money View · Last 30 Days · Net Revenue First")
 
 
