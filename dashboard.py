@@ -134,7 +134,7 @@ if "email_sent_date" not in st.session_state:
 today = date.today()
 
 if st.session_state.email_sent_date != today:
-    send_daily_email(metrics, changes, discount_pct, discount_roi, alerts)
+    #send_daily_email(metrics, changes, discount_pct, discount_roi, alerts)
     st.session_state.email_sent_date = today
 
 
