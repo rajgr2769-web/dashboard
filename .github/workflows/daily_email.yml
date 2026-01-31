@@ -2,7 +2,7 @@ name: Daily Revenue Email
 
 on:
   schedule:
-    - cron: "30 3 * * *"   # Runs daily at 9:00 AM IST
+    - cron: "30 3 * * *"   # 9:00 AM IST
   workflow_dispatch:
 
 jobs:
@@ -24,8 +24,9 @@ jobs:
 
       - name: Run email report
         env:
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
         run: |
           python email_report.py
